@@ -1,0 +1,6 @@
+EXEC sp_attach_db @dbname = 'CortexDBWarehouse',
+    @filename1 = "/mnt/anpr-mssql/CortexDBWarehouse_Primary.mdf",
+    @filename2 = "/mnt/anpr-mssql/CortexDBWarehouse_INDEX.mdf",
+    @filename3 = "/mnt/anpr-mssql/CortexDBWarehouse_DATA.mdf",
+    @filename4 = "/mnt/anpr-mssql/CortexDBWarehouse_BLOB.mdf",
+    @filename5 = "/mnt/anpr-mssql/CortexDBWarehouse.ldf";
