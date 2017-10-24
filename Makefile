@@ -21,7 +21,13 @@ test: server.py
 	@ENV/bin/python server.py --help
 
 install : pip virtualenv dependencies test
-	
+
+mkvirtualenv-mac: /usr/local/bin/virtualenv
+	$(info $(blue) Creating virtualenv 'ENV'$(reset))
+	@/usr/local/bin/virtualenv ENV
+
+install-mac: mkvirtualenv-mac dependencies test
+
 clean :
 	$(info $(red)Removing virtualenv in directory 'ENV'$(reset))
 	@rm -rf ENV
