@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-
+server.py is an interactive script for managing
 """
 
 from subprocess import call
@@ -58,31 +58,41 @@ def getContainer():
 #
 ###############################################
 
-@click.group(help="TEST2")
+@click.group(help="This is a wrapper application to ease the setup and management of the automatic number plate recognition (ANPR) microsoft sql-server database")
 def anpr():
     pass
 
-@anpr.command(name='ls-disks', help="TEST")
+@anpr.command(name='ls-disks', help="List available block devices")
 def lsdisks():
-    call(["sudo", "fdisk", "-l"])
+    """
+    List available block devices.
 
-@anpr.command(name='ls-uuids')
+    This operation is meant to help the user determining the block device which the openstack volume has been attached.
+
+    Requires sudo permissions.
+    """
+    call(["sudo", "lsblk", "-o", "NAME,FSTYPE,SIZE,MOUNTPOINT,LABEL"])
+
+@anpr.command(name='ls-uuids', help="List the uuid of available block devices")
 def lsuuids():
+    """
+    List the uuid of available block devices.
+
+    This operation is meant to help the user determining the uuid of the block device which the openstack volume has been attached.
+    """
     listSymbolicLinks('/dev/disk/by-uuid/')
 
-#@anpr.command(name='mkfs')
-#@click.argument('disk-uuid', required = True, type = click.UUID)
-#def mkfs(disk_uuid):
-#    disk_path = "/dev/disk/by-uuid/" + str(disk_uuid)
-#    if stat.S_ISBLK(os.stat(disk_path).st_mode):
-#        call(["sudo", "mkfs", "-t", "ext4", disk_path])
-#    else:
-#        click.echo("No block device file with given uuid exists at: " + disk_path)
-
-@anpr.command('mount')
+@anpr.command('mount', help="Mount the anpr database files")
 @click.argument('disk-uuid', required = True, type = click.UUID)
 @click.argument('mssql-file-format', required = True, type = click.Choice(['bak', 'mdf']))
 def mount(disk_uuid, mssql_file_format):
+    """
+    Mount the openstack volume containing the bak or mdf files.
+
+    This operation takes as input the uuid of the block device corresponding to the openstack volume, which can be determined through the use of 'ls-disks' and 'ls-uuids' operations. The disk will be mounted on subdirectories 'bakfile' or 'dbfiles' depending on the format of the anpr data held by the openstack volume. If the anpr data consists of a backup restore file then it will be mounted in 'bakfile', otherwise if it consists of master and log database files, it will be mounted in 'dbfiles'. This behavior must specified in second parameter by passing one of the following values {'bak', 'mdf'}, respectively.
+
+    Requires sudo permissions.
+    """
     disk_path = "/dev/disk/by-uuid/" + str(disk_uuid)
     if mssql_file_format == 'mdf':
         target_dir = dbfiles_path
@@ -93,9 +103,16 @@ def mount(disk_uuid, mssql_file_format):
     else:
         click.echo("No block device file with given uuid exists at: " + disk_path)
 
-@anpr.command('umount')
+@anpr.command('umount', help="Unmount the anpr database files")
 @click.argument('mssql-file-format', required = True, type = click.Choice(['bak', 'mdf']))
 def umount(mssql_file_format):
+    """
+    Unmount the openstack volume containing the bak or mdf files.
+
+    Pick the data type held by the disk you wish to unmount {'bak', 'mdf'} and  the folder 'bakfile' or 'dbfiles' will be unmounted accordingly.
+
+    Requires sudo permissions.
+    """
     if mssql_file_format == 'mdf':
         target_dir = dbfiles_path
     else:
@@ -105,8 +122,11 @@ def umount(mssql_file_format):
     else:
         click.echo("Target dir is not mounted: " + target_dir)
 
-@anpr.command('ls-mounts')
+@anpr.command('ls-mounts', help="Show mount status")
 def lsmounts():
+    """
+    Show the status of expected anpr data mount locations.
+    """
     click.echo("Expected Mount Location --- Status --- Volume's Purpose")
 
     if os.path.ismount(bakfile_path):
@@ -119,8 +139,13 @@ def lsmounts():
     else:
         click.echo(dbfiles_path + " --- NOT MOUNTED --- " + "Mssql Database Files (.mdf, .ldf)")
 
-@anpr.command('pull-image')
+@anpr.command('pull-image', help="Pull the mssql-server docker image")
 def pull():
+    """
+    Pull the mssql-server image from docker's registry.
+
+    The microsoft sql-server runs inside a container created from the docker image microsoft/mssql-server-linux. Before running the anpr-server the image needs to be downloaded and available in the system.
+    """
     client = docker.from_env()
     if not client.images.list(name = image_name):
         click.echo("Pulling image, this may take a while...")
@@ -129,20 +154,36 @@ def pull():
     else:
         click.echo("Skipped: image exists")
 
-@anpr.command('start')
+@anpr.command('start', help="Start the anpr sql-server")
 @click.option('--password', '-p',
              type = str,
              envvar = 'SQL_SERVER_PASSWORD',
-             required = True)
-@click.argument('mssql-file-format',
+             required = True,
+             help = "")
+@click.argument('mode',
                 required = True,
-                type = click.Choice(['bak', 'mdf']),
-                default = 'mdf')
-def run_container(mssql_file_format, password):
-    if mssql_file_format == "mdf":
+                type = click.Choice(['restore', 'attach']),
+                default = 'attach')
+def run_container(mode, password):
+    """
+    Run a new container named "anpr-mssql-server".
+
+    The microsoft/mssql-server-linux docker image is an official image for Microsoft SQL Server on Linux for Docker Engine and is designed to be used in real production environments and support real workloads. Therefore, I think we can assume that the container can be run for long periods of time and won't be restarted frequently. As a result, we do not persist the master database, which records all the system-level information for a SQL Server system. Instead, the openstack volumes containing the dbfiles should be used to store the database fles. Then, on starting a new container we either re-create the anpr database by attaching the existing database files that should be mounted in 'dbfiles' (mdf, ldf), or by restoring the backup file that should be mounted in 'bakfile'. This behavior is specified by the parameter 'mode' and should be set to 'restore' or 'attach' depending on the format of the anpr data resources available: if bakfile then restore, else if mdf,ldf files then attach.
+
+    The server is configured similarly to what is documented at https://hub.docker.com/r/microsoft/mssql-server-linux/.
+
+    The system administrator password must be provided via the environment variable 'SQL_SERVER_PASSWORD'.
+    """
+    container = getContainer()
+    if container:
+        click.echo("Server is already running")
+        return
+    if mode == "attach":
+        # If not mounted - exit
         volumes = {dbfiles_path : {'bind' : dbfiles_container_path,
                                    'mode' : 'ro'}}
     else:
+        # If not mounted - exit
         volumes = {bakfile_path : {'bind' : bakfile_container_path,
                                     'mode' : 'ro'},
                    dbfiles_path : {'bind' : dbfiles_container_path,
@@ -163,29 +204,38 @@ def run_container(mssql_file_format, password):
                                                 "MaximumRetryCount" : 3},
                               name = container_name)
         click.echo("Started")
-        # Run-Query Attach Database
-
-        # Run-Query Restore Database
+        if mode == "attach":
+            # Run-Query Attach Database
+            click.echo("Attaching the anpr database...")
+        else:
+            # Run-Query Restore Database
+            click.echo("Restoring the anpr database...")
 
     except docker.errors.APIError as e:
         click.echo(e)
     except docker.errors.ContainerError as e2:
         click.echo(e2)
 
-@anpr.command('status')
+@anpr.command('status', help="Show the status of the anpr sql-server")
 def get_status():
+    """
+    Look for a container named "anpr-mssql-server" and return its status.
+    """
     container = getContainer()
     if container:
         click.echo(getContainer().status)
 
-@anpr.command('stop')
+@anpr.command('stop', help="Stop the anpr sql-server")
 def stop_container():
+    """
+    Look for a container named "anpr-mssql-server" and stop it if it's running. Soft timeout of 15 seconds.
+    """
     container = getContainer()
     if not container:
         click.echo("Server is not running")
         return
     try:
-        container.stop(timeout = 5)
+        container.stop(timeout = 15)
         container.remove()
         click.echo("Stopped and removed")
     except docker.errors.APIError as e:
