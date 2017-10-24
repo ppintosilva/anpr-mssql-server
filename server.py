@@ -2,8 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 
-This is a awesome python script!
-
 """
 
 from subprocess import call
@@ -60,11 +58,11 @@ def getContainer():
 #
 ###############################################
 
-@click.group()
+@click.group(help="TEST2")
 def anpr():
     pass
 
-@anpr.command(name='ls-disks')
+@anpr.command(name='ls-disks', help="TEST")
 def lsdisks():
     call(["sudo", "fdisk", "-l"])
 
@@ -72,10 +70,14 @@ def lsdisks():
 def lsuuids():
     listSymbolicLinks('/dev/disk/by-uuid/')
 
-@anpr.command(name='mkfs')
-@click.argument('disk-uuid', required = True, type = click.UUID)
-def mkfs(disk_uuid):
-    pass
+#@anpr.command(name='mkfs')
+#@click.argument('disk-uuid', required = True, type = click.UUID)
+#def mkfs(disk_uuid):
+#    disk_path = "/dev/disk/by-uuid/" + str(disk_uuid)
+#    if stat.S_ISBLK(os.stat(disk_path).st_mode):
+#        call(["sudo", "mkfs", "-t", "ext4", disk_path])
+#    else:
+#        click.echo("No block device file with given uuid exists at: " + disk_path)
 
 @anpr.command('mount')
 @click.argument('disk-uuid', required = True, type = click.UUID)
