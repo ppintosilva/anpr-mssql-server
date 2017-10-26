@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-server.py is an interactive script for managing
-"""
 
 from subprocess import call
 import os
@@ -35,11 +32,6 @@ bakfile_container_path = '/mnt/anpr-bak'
 #
 ###############################################
 
-def listSymbolicLinks(folder):
-    ids = os.listdir(folder)
-    for ident in ids:
-        click.echo(ident + " ---> " + os.path.realpath(folder + ident))
-
 def getContainer():
     client = docker.from_env()
     try:
@@ -62,48 +54,38 @@ def getContainer():
 def anpr():
     pass
 
-@anpr.command(name='ls-disks', help="List available block devices")
-def lsdisks():
+@anpr.command(name='ls-volumes', short_help="List block devices")
+def lsvolumes():
     """
-    List available block devices.
+    List block devices
 
     This operation is meant to help the user determining the block device which the openstack volume has been attached.
 
-    Requires sudo permissions.
+    The user running this script needs to be part of the group 'disk'.
     """
-    call(["sudo", "lsblk", "-o", "NAME,FSTYPE,SIZE,MOUNTPOINT,LABEL"])
+    call(["lsblk", "-o", "NAME,FSTYPE,SIZE,MOUNTPOINT,LABEL"])
 
-@anpr.command(name='ls-uuids', help="List the uuid of available block devices")
-def lsuuids():
-    """
-    List the uuid of available block devices.
-
-    This operation is meant to help the user determining the uuid of the block device which the openstack volume has been attached.
-    """
-    listSymbolicLinks('/dev/disk/by-uuid/')
-
-@anpr.command('mount', help="Mount the anpr database files")
-@click.argument('disk-uuid', required = True, type = click.UUID)
+@anpr.command('mount', short_help="Mount the anpr database files")
+@click.argument('volume-path', required = True, type=click.Path(exists=True))
 @click.argument('mssql-file-format', required = True, type = click.Choice(['bak', 'mdf']))
-def mount(disk_uuid, mssql_file_format):
+def mount(volume_path, mssql_file_format):
     """
     Mount the openstack volume containing the bak or mdf files.
 
     This operation takes as input the uuid of the block device corresponding to the openstack volume, which can be determined through the use of 'ls-disks' and 'ls-uuids' operations. The disk will be mounted on subdirectories 'bakfile' or 'dbfiles' depending on the format of the anpr data held by the openstack volume. If the anpr data consists of a backup restore file then it will be mounted in 'bakfile', otherwise if it consists of master and log database files, it will be mounted in 'dbfiles'. This behavior must specified in second parameter by passing one of the following values {'bak', 'mdf'}, respectively.
 
-    Requires sudo permissions.
+    The user running this script needs to be part of the group 'disk'.
     """
-    disk_path = "/dev/disk/by-uuid/" + str(disk_uuid)
     if mssql_file_format == 'mdf':
         target_dir = dbfiles_path
     else:
         target_dir = bakfile_path
-    if stat.S_ISBLK(os.stat(disk_path).st_mode):
-        call(["sudo", "mount", disk_path, target_dir])
+    if stat.S_ISBLK(os.stat(volume_path).st_mode):
+        call(["mount", volume_path, target_dir])
     else:
-        click.echo("No block device file with given uuid exists at: " + disk_path)
+        click.echo("Not a block device: " + disk_path)
 
-@anpr.command('umount', help="Unmount the anpr database files")
+@anpr.command('umount', short_help="Unmount the anpr database files")
 @click.argument('mssql-file-format', required = True, type = click.Choice(['bak', 'mdf']))
 def umount(mssql_file_format):
     """
@@ -111,21 +93,23 @@ def umount(mssql_file_format):
 
     Pick the data type held by the disk you wish to unmount {'bak', 'mdf'} and  the folder 'bakfile' or 'dbfiles' will be unmounted accordingly.
 
-    Requires sudo permissions.
+    The user running this script needs to be part of the group 'disk'.
     """
     if mssql_file_format == 'mdf':
         target_dir = dbfiles_path
     else:
         target_dir = bakfile_path
     if os.path.ismount(target_dir):
-        call(["sudo", "umount", target_dir])
+        call(["umount", target_dir])
     else:
         click.echo("Target dir is not mounted: " + target_dir)
 
-@anpr.command('ls-mounts', help="Show mount status")
+@anpr.command('ls-mounts', short_help="Show mount status")
 def lsmounts():
     """
     Show the status of expected anpr data mount locations.
+
+    Data volumes if properly mounted, using this script, are expected to be mounted to a specific folder. This command allows the user to list and check the status of expected mount points.
     """
     click.echo("Expected Mount Location --- Status --- Volume's Purpose")
 
@@ -139,7 +123,7 @@ def lsmounts():
     else:
         click.echo(dbfiles_path + " --- NOT MOUNTED --- " + "Mssql Database Files (.mdf, .ldf)")
 
-@anpr.command('pull-image', help="Pull the mssql-server docker image")
+@anpr.command('pull-image', short_help="Pull the mssql-server docker image")
 def pull():
     """
     Pull the mssql-server image from docker's registry.
@@ -154,12 +138,11 @@ def pull():
     else:
         click.echo("Skipped: image exists")
 
-@anpr.command('start', help="Start the anpr sql-server")
+@anpr.command('start', short_help="Start the anpr-mssql-server")
 @click.option('--password', '-p',
              type = str,
              envvar = 'SQL_SERVER_PASSWORD',
-             required = True,
-             help = "")
+             required = True)
 @click.argument('mode',
                 required = True,
                 type = click.Choice(['restore', 'attach']),
@@ -216,7 +199,7 @@ def run_container(mode, password):
     except docker.errors.ContainerError as e2:
         click.echo(e2)
 
-@anpr.command('status', help="Show the status of the anpr sql-server")
+@anpr.command('status', short_help="Status of the anpr-mssql-server")
 def get_status():
     """
     Look for a container named "anpr-mssql-server" and return its status.
@@ -225,10 +208,10 @@ def get_status():
     if container:
         click.echo(getContainer().status)
 
-@anpr.command('stop', help="Stop the anpr sql-server")
+@anpr.command('stop', short_help="Stop the anpr-mssql-server")
 def stop_container():
     """
-    Look for a container named "anpr-mssql-server" and stop it if it's running. Soft timeout of 15 seconds.
+    Looks for a container named "anpr-mssql-server" and stop it if is running. Soft timeout of 15 seconds.
     """
     container = getContainer()
     if not container:
@@ -246,4 +229,6 @@ def stop_container():
 ##############################################
 
 if __name__ == "__main__":
+    if os.getuid() == 0:
+	sys.exit("Do not run this script as root. If you need permissions to list and mount block devices, add your user to the 'disk' group.")
     anpr()
