@@ -60,10 +60,8 @@ def lsvolumes():
     List block devices
 
     This operation is meant to help the user determining the block device which the openstack volume has been attached.
-
-    The user running this script needs to be part of the group 'disk'.
     """
-    call(["lsblk", "-o", "NAME,FSTYPE,SIZE,MOUNTPOINT,LABEL"])
+    call(["lsblk", "-o", "NAME,FSTYPE,SIZE,MOUNTPOINT"])
 
 @anpr.command('mount', short_help="Mount the anpr database files")
 @click.argument('volume-path', required = True, type=click.Path(exists=True))
@@ -74,14 +72,14 @@ def mount(volume_path, mssql_file_format):
 
     This operation takes as input the uuid of the block device corresponding to the openstack volume, which can be determined through the use of 'ls-disks' and 'ls-uuids' operations. The disk will be mounted on subdirectories 'bakfile' or 'dbfiles' depending on the format of the anpr data held by the openstack volume. If the anpr data consists of a backup restore file then it will be mounted in 'bakfile', otherwise if it consists of master and log database files, it will be mounted in 'dbfiles'. This behavior must specified in second parameter by passing one of the following values {'bak', 'mdf'}, respectively.
 
-    The user running this script needs to be part of the group 'disk'.
+    Sudo permissions are required. If user does not have passwordless sudo it will prompt for a password.
     """
     if mssql_file_format == 'mdf':
         target_dir = dbfiles_path
     else:
         target_dir = bakfile_path
     if stat.S_ISBLK(os.stat(volume_path).st_mode):
-        call(["mount", volume_path, target_dir])
+        call(["sudo", "mount", volume_path, target_dir])
     else:
         click.echo("Not a block device: " + disk_path)
 
@@ -93,14 +91,14 @@ def umount(mssql_file_format):
 
     Pick the data type held by the disk you wish to unmount {'bak', 'mdf'} and  the folder 'bakfile' or 'dbfiles' will be unmounted accordingly.
 
-    The user running this script needs to be part of the group 'disk'.
+    Sudo permissions are required. If user does not have passwordless sudo it will prompt for a password.
     """
     if mssql_file_format == 'mdf':
         target_dir = dbfiles_path
     else:
         target_dir = bakfile_path
     if os.path.ismount(target_dir):
-        call(["umount", target_dir])
+        call(["sudo", "umount", target_dir])
     else:
         click.echo("Target dir is not mounted: " + target_dir)
 
