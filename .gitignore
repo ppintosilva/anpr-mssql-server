@@ -99,3 +99,7 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# Subdirs bakfile and dbfiles
+bakfile/*
+dbfiles/*
