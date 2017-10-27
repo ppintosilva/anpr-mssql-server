@@ -207,7 +207,6 @@ def run_container(password):
     if container:
         click.echo("Server is already running")
         return
-    # Verify build mounts
     # Build map of mountpoints for docker.run
     volumes = {bakfile_path : {'bind' : bakfile_container_path,
                                'mode' : 'ro'},
