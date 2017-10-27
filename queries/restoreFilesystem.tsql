@@ -1,2 +1,0 @@
-DECLARE @getDBFilenames VARCHAR(MAX) = 'RESTORE FILELISTONLY FROM DISK = ''/home/ANPR-BAK/CortexDBWarehouse_20170705.bak'''
-EXEC(@getDBFilenames)
