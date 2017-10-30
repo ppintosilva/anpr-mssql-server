@@ -222,6 +222,7 @@ def run_container(password):
                                               "MSSQL_SA_PASSWORD" : password },
                               ports = {'1433/tcp' : ("127.0.0.1", 1433)},
                               cap_add = ["SYS_PTRACE"],
+                              network_mode = "host",
                               volumes = volumes,
                               restart_policy = {"Name" : "on-failure",
                                                 "MaximumRetryCount" : 3},
