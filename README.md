@@ -17,7 +17,7 @@ Tools for deploying the ANPR Microsoft SQL-Server database as a docker container
 - Clone the repo using a deploy key
 - ```$ make install```
 - ```$ source ENV/bin/activate```
-- ```# python server.py pull-image```
+- ```$ python server.py pull-image```
 - ```$ python server.py ls-volumes``` -> if unsure about which block device corresponds to which data volume
 - ```# python server.py mount [block_device_with_bak_file] bak```
 - ```# python server.py mount [block_device_with_mdf_files] mdf```
@@ -29,7 +29,7 @@ Tools for deploying the ANPR Microsoft SQL-Server database as a docker container
 ---
 
 ## Context
-Automatic Number Plate Recognition (ANPR) data is used actively in law enforcement and in traffic management and control. The data originates from roadside cameras that automatically detect the number plates of passing vehicles. It is stored and maintained in a sql-server database. We've been kindly granted a copy of part of the database, for research purposes.
+Automatic Number Plate Recognition (ANPR) data is used actively in law enforcement and in traffic management and control. The data originates from roadside cameras that automatically detect the number plates of passing vehicles. It is stored and maintained in a sql-server database. We've been kindly granted a copy of part of the database for research purposes.
 
 ### Assumptions
 
