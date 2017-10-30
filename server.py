@@ -382,6 +382,33 @@ def show_db_restore_progress(password):
                               "-Q", query_restore_progress_builder()])
     click.echo(response)
 
+@click.option('--password', '-p',
+             type = str,
+             envvar = 'SQL_PASSWORD',
+             required = True,
+             help="Database password for SA user. Read from environment variable 'SQL_PASSWORD'")
+@anpr.command('connect', short_help="Connect to the anpr database")
+def connect(password):
+    """
+    Connect to the database using sqlcmd
+    """
+    container = getContainer()
+    if not container:
+        click.echo("Server is not running")
+        return
+    
+    cmd = [ "docker",
+            "exec",
+            "-it",
+            container_name,
+            "/opt/mssql-tools/bin/sqlcmd",
+            "-U", "sa",
+            "-P", password,
+            "-S", "localhost"]
+
+    call(cmd)
+
+
 ##############################################
 ##############################################
 ##############################################
