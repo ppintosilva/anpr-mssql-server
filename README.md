@@ -1,6 +1,33 @@
 # anpr-mssql-server
 Tools for deploying the ANPR Microsoft SQL-Server database as a docker container on a ubuntu server
 
+## TL;DR
+
+### Requirements
+
+- An ubuntu cloud instance (or similar)
+- A block storage volume containing the mssql database files (single .bak file or collection of .mdf/.ldf files)
+- The volume is attached to the instance and available as a block storage device
+- A filesystem has been created for the block device ```mkfs -t ext4 [block_device]```
+- ```python-pip``` and ```docker``` are installed
+- User is part of the ```docker``` group
+
+### Run
+
+- Clone the repo using a deploy key
+- ```$ make install```
+- ```$ source ENV/bin/activate```
+- ```# python server.py pull-image```
+- ```$ python server.py ls-volumes``` -> if unsure about which block device corresponds to which data volume
+- ```# python server.py mount [block_device_with_bak_file] bak```
+- ```# python server.py mount [block_device_with_mdf_files] mdf```
+- Set environment variable 'SQL_PASSWORD' (requires use of lowercase, uppercase and punctuation/digits - minimum of 10 characters)
+- ```$ python server.py start```
+- ```$ python server.py restore``` or ```python server.py attach```
+- Expose port 1433 if querying the database from a different host
+
+---
+
 ## Context
 Automatic Number Plate Recognition (ANPR) data is used actively in law enforcement and in traffic management and control. The data originates from roadside cameras that automatically detect the number plates of passing vehicles. It is stored and maintained in a sql-server database. We've been kindly granted a copy of part of the database, for research purposes.
 
@@ -28,27 +55,73 @@ A makefile is used to take care of the python environment and dependencies requi
 
 ## Usage
 
-Before starting to use the server script, make sure the virtual environment is active.
+Before using the server script, make sure that the virtual environment is active.
 
 ```source ENV/bin/activate```
 
-You can then run the script as `python server.py`. The following operations are allowed:
+You can then run the script using `python server.py [options] [command] [arguments]`. The following commands are allowed:
 
 ```
-ls-disks    List available block devices
-ls-uuids    List the uuid of available block devices
-ls-mounts   Show the status of expected mountpoints
-mount       Mount the anpr data volume containing the anpr database files
-pull-image  Pull the mssql-server docker image
-start       Start eh anpr-mssql-server
-status      Show the status of the anpr-mssql-server
-stop        Stop the anpr-mssql-server
-umount      Unmount the anpr data volume
+attach            Attach the anpr database
+connect           Connect to the anpr database
+ls-mounts         Show mount status
+ls-volumes        List block devices
+mount             Mount the anpr database files
+restore           Restore the database
+pull-image        Pull the mssql-server docker image
+restore           Restore the anpr database
+restore-progress  Show restore database progress
+start             Start the anpr-mssql-server
+status            Status of the anpr-mssql-server
+stop              Stop the anpr-mssql-server
+umount            Unmount the anpr database files
 ```
 
 ### Preparing the server
 
-### Starting the server
+To help you determine the block device which holds the anpr database files, you can run the ```ls-volumes``` command:
+```
+python server.py ls-volumes
+
+NAME                       FSTYPE   SIZE MOUNTPOINT
+sr0                        iso9660  428K
+vda                                   8G
+└─vda1                     ext4       8G /
+vdb                        ext4     500G
+vdc                        ext4     400G
+```
+
+After that, you should mount the storage volumes using the ```mount``` command (requires sudo). If attaching the database, only the second command needs to be run, otherwise both are required (because the database is restored onto the database files in the other volume).
+```
+python server.py mount block_device_path bak
+
+python server.py mount block_device_path mdf
+```
+
+You can check the status of your mount points by running:
+```
+python server.py ls-mounts
+
+Expected Mount Location --- Status --- Volume's Purpose
+/home/jsnow/anpr-mssql-server/bakfile --- MOUNTED --- Mssql Database Backup File (.bak)
+/home/jsnow/anpr-mssql-server/dbfiles --- MOUNTED --- Mssql Database Files (.mdf, .ldf)
+```
+
+Before starting the server you will need to pull the docker image from the registry:
+```
+python server.py pull-image
+
+(...)
+```
+
+### Starting and managing the server
+
+Starting, querying the status of the server and stopping it can be made using commands ```start```, ```status``` and ```stop```, respectively. To start the server a password is required. This value is read by default from environment variable ```SQL_PASSWORD``` and should be the preferred way of passing this parameter. To be accepted by the SQL server database it most conform to the following format: use of lowercase, uppercase and punctuation/digits with a minimum of 10 characters. This value is also required for commands ```attach```, ```restore```, ```connect```, ```restore-progress```.
+
+The ```attach``` command should be used once the 'mdf' and 'ldf' files are available. If only the 'bak' file is available, then the ```restore``` command should be used instead. As this process takes a long time, it is run in the background and the ```restore-progress``` command can be used to show its progress. The ```connect``` command can be used to connect to the database using the ```sqlcmd``` command.
+
+The server status can be queried and stopped with the ```status``` and ```stop``` commands. The ```stop``` command accepts a ```--force/-f``` flag.
+
 
 ## Querying the database
 
