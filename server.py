@@ -8,6 +8,7 @@ import click
 import docker
 import ast
 import sys
+import time
 
 ###############################################
 #
@@ -83,6 +84,16 @@ def query_attachdb_builder(dbname, db_namemap):
 
 def query_restore_progress_builder():
     return "SET NOCOUNT ON;SELECT start_time,cast(percent_complete as int) as progress,dateadd(second,estimated_completion_time/1000, getdate()) as estimated_completion_time, cast(estimated_completion_time/1000/60 as int) as minutes_left FROM sys.dm_exec_requests r WHERE r.command='RESTORE DATABASE'"
+
+def query_configure_ram(ram = 2048):
+    return """exec sp_configure 'show advanced options', 1
+              GO
+              RECONFIGURE
+              GO
+              exec sp_configure 'max server memory', {}
+              GO
+              RECONFIGURE
+              GO""".format(ram)
 
 ###############################################
 #
@@ -193,7 +204,12 @@ def pull():
              envvar = 'SQL_PASSWORD',
              required = True,
              help = "Database password for SA user. Read from environment variable 'SQL_PASSWORD'")
-def run_container(password):
+@click.option('--ram',
+              type = int,
+              required = False,
+              default = 2048,
+              help = "Maximum ram used by mssql-server")
+def run_container(password, ram):
     """
     Run a new container named "anpr-mssql-server".
 
@@ -213,7 +229,8 @@ def run_container(password):
     # Get the docker client
     client = docker.from_env()
     try:
-        client.containers.run(image = image_name,
+        container = client.containers.run(
+                              image = image_name,
                               detach = True,
                               environment = { "ACCEPT_EULA" : "Y",
                                               "MSSQL_PID" : "Developer",
@@ -224,10 +241,21 @@ def run_container(password):
                               volumes = volumes,
                               name = container_name)
         click.echo("Started")
+        # Let the server start gracefully before attempting any query
+        time.sleep(10)
+        # Reconfigure max ram used by mssql server, otherwise large queries will trigger memory swaps and make the whole system slow and useless
+        response = container.exec_run(cmd = ["/opt/mssql-tools/bin/sqlcmd",
+                           "-U", "sa",
+                           "-P", password,
+                           "-S", "localhost",
+                           "-Q", query_configure_ram(ram)])
+        # click.echo(response)
+        click.echo("Reconfigured max ram = {}".format(ram))
     except docker.errors.APIError as e:
         click.echo(e)
     except docker.errors.ContainerError as e2:
         click.echo(e2)
+
 
 
 @click.option('--password', '-p',
