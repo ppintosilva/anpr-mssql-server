@@ -8,6 +8,7 @@ import click
 import docker
 import ast
 import sys
+import time
 
 ###############################################
 #
@@ -20,11 +21,24 @@ import sys
 image_name = "microsoft/mssql-server-linux"
 container_name = "anpr-mssql-server"
 
-dbfiles_path = os.getcwd() + "/dbfiles"
-bakfile_path = os.getcwd() + "/bakfile"
+mounts = {'mdf': {
+            'source' : os.getcwd() + "/dbfiles",
+            'target' : '/mnt/anpr-mssql',
+            'desc' : 'Mssql Database Files (.mdf, .ldf)'
+            },
+          'bak': {
+            'source' : os.getcwd() + "/bakfile",
+            'target' : '/mnt/anpr-bak',
+            'desc' : 'Mssql Database Backup File (.bak)'
+            },
+          'tempdb': {
+            'source' : os.getcwd() + "/tempdb",
+            'target' : '/var/opt/mssql/data',
+            'desc' : 'Mssql Runtime Files (tempdb, master)'
+            }
+         }
 
-dbfiles_container_path = '/mnt/anpr-mssql'
-bakfile_container_path = '/mnt/anpr-bak'
+volumes = {value['source'] : {'bind' : value['target'], 'mode' : 'rw'} for key, value in mounts.iteritems()}
 
 default_db_namemap = {'CortexDBWarehouse' : 'CortexDBWarehouse_Primary.mdf',
                       'BLOB' : 'CortexDBWarehouse_BLOB.mdf',
@@ -45,10 +59,10 @@ def query_restoredb_builder(dbname, db_namemap, bakfile_name):
     for dbComponent, componentFilename in db_namemap.iteritems():
         move_lines += "MOVE ''{}'' TO ''{}'', ".format(
                 dbComponent, 
-                "{}/{}".format(dbfiles_container_path,componentFilename))
+                "{}/{}".format(mdf['mdf']['target'],componentFilename))
     move_lines += "STATS = 10"
     sql_function = " ".join(["RESTORE DATABASE {}".format(dbname),
-                            "FROM DISK = ''{}''".format("{}/{}".format(bakfile_container_path, bakfile_name)),
+                            "FROM DISK = ''{}''".format("{}/{}".format(mounts['bak']['target'], bakfile_name)),
                             "WITH {}".format(move_lines)])
     return "\n".join(["USE master",
                       "GO",
@@ -63,13 +77,23 @@ def query_attachdb_builder(dbname, db_namemap):
             separator = ';'
         else:
             separator = ','
-        filename_lines += "@filename{} = \"{}\"{} ".format(i+1, "".join([dbfiles_container_path, "/", filenames[i]]), separator)
+        filename_lines += "@filename{} = \"{}\"{} ".format(i+1, "".join([mounts['mdf']['target'], "/", filenames[i]]), separator)
 
     return " ".join(["EXEC sp_attach_db @dbname ='{}',".format(dbname),
                      filename_lines])
 
 def query_restore_progress_builder():
     return "SET NOCOUNT ON;SELECT start_time,cast(percent_complete as int) as progress,dateadd(second,estimated_completion_time/1000, getdate()) as estimated_completion_time, cast(estimated_completion_time/1000/60 as int) as minutes_left FROM sys.dm_exec_requests r WHERE r.command='RESTORE DATABASE'"
+
+def query_configure_ram(ram = 2048):
+    return """exec sp_configure 'show advanced options', 1
+              GO
+              RECONFIGURE
+              GO
+              exec sp_configure 'max server memory', {}
+              GO
+              RECONFIGURE
+              GO""".format(ram)
 
 ###############################################
 #
@@ -112,39 +136,32 @@ def lsvolumes():
     call(["lsblk", "-o", "NAME,FSTYPE,SIZE,MOUNTPOINT"])
 
 @anpr.command('mount', short_help="Mount the anpr database files")
-@click.argument('volume-path', required = True, type=click.Path(exists=True))
-@click.argument('mssql-file-format', required = True, type = click.Choice(['bak', 'mdf']))
-def mount(volume_path, mssql_file_format):
+@click.argument('bdev', required = True, type=click.Path(exists=True))
+@click.argument('content', required = True, type = click.Choice(mounts.keys()))
+def mount(bdev, content):
     """
-    Mount the openstack volume containing the bak or mdf files.
+    Mount a (openstack) volume that contains the bak or mdf files, or is used for tempdb.
 
-    This operation takes as input the uuid of the block device corresponding to the openstack volume, which can be determined through the use of 'ls-disks' and 'ls-uuids' operations. The disk will be mounted on subdirectories 'bakfile' or 'dbfiles' depending on the format of the anpr data held by the openstack volume. If the anpr data consists of a backup restore file then it will be mounted in 'bakfile', otherwise if it consists of master and log database files, it will be mounted in 'dbfiles'. This behavior must specified in second parameter by passing one of the following values {'bak', 'mdf'}, respectively.
+    This operation takes as input the uuid of the block device corresponding to the openstack volume, which can be determined through the use of 'ls-disks' and 'ls-uuids' operations. The disk will be mounted on subdirectories 'bakfile' or 'dbfiles' depending on the format of the anpr data held by the openstack volume. If the anpr data consists of a backup restore file then it will be mounted in 'bakfile', otherwise if it consists of master and log database files, it will be mounted in 'dbfiles'. This behavior must specified in second parameter by passing one of the following values {'bak', 'mdf', 'tempdb'}, respectively.
 
     Sudo permissions are required. If user does not have passwordless sudo it will prompt for a password.
     """
-    if mssql_file_format == 'mdf':
-        target_dir = dbfiles_path
+    if stat.S_ISBLK(os.stat(bdev).st_mode):
+        call(["sudo", "mount", bdev, mounts[content]['source']])
     else:
-        target_dir = bakfile_path
-    if stat.S_ISBLK(os.stat(volume_path).st_mode):
-        call(["sudo", "mount", volume_path, target_dir])
-    else:
-        click.echo("Not a block device: " + disk_path)
+        click.echo("Not a block device: " + bdev)
 
 @anpr.command('umount', short_help="Unmount the anpr database files")
-@click.argument('mssql-file-format', required = True, type = click.Choice(['bak', 'mdf']))
-def umount(mssql_file_format):
+@click.argument('content', required = True, type = click.Choice(mounts.keys()))
+def umount(content):
     """
-    Unmount the openstack volume containing the bak or mdf files.
+    Unmount a (openstack) volume.
 
-    Pick the data type held by the disk you wish to unmount {'bak', 'mdf'} and  the folder 'bakfile' or 'dbfiles' will be unmounted accordingly.
+    Pick the data type held by the disk you wish to unmount {'bak', 'mdf', ''} and  the folder 'bakfile' or 'dbfiles' will be unmounted accordingly.
 
     Sudo permissions are required. If user does not have passwordless sudo it will prompt for a password.
     """
-    if mssql_file_format == 'mdf':
-        target_dir = dbfiles_path
-    else:
-        target_dir = bakfile_path
+    target_dir = mounts[content]['source']
     if os.path.ismount(target_dir):
         call(["sudo", "umount", target_dir])
     else:
@@ -153,21 +170,18 @@ def umount(mssql_file_format):
 @anpr.command('ls-mounts', short_help="Show mount status")
 def lsmounts():
     """
-    Show the status of expected anpr data mount locations.
+    Show the status of expected mount locations.
 
     Data volumes if properly mounted, using this script, are expected to be mounted to a specific folder. This command allows the user to list and check the status of expected mount points.
     """
     click.echo("Expected Mount Location --- Status --- Volume's Purpose")
 
-    if os.path.ismount(bakfile_path):
-        click.echo(bakfile_path + " --- MOUNTED --- " + "Mssql Database Backup File (.bak)")
-    else:
-        click.echo(bakfile_path + " --- NOT MOUNTED --- " + "Mssql Database Backup File (.bak)")
-
-    if os.path.ismount(dbfiles_path):
-        click.echo(dbfiles_path + " --- MOUNTED --- " + "Mssql Database Files (.mdf, .ldf)")
-    else:
-        click.echo(dbfiles_path + " --- NOT MOUNTED --- " + "Mssql Database Files (.mdf, .ldf)")
+    for key, value in mounts.iteritems():
+        if os.path.ismount(value['source']):
+            mountStatus = " ----- MOUNTED ----- "
+        else:
+            mountStatus = " --- NOT MOUNTED --- "
+        click.echo(value['source'] + mountStatus + value['desc'])
 
 @anpr.command('pull-image', short_help="Pull the mssql-server docker image")
 def pull():
@@ -190,7 +204,12 @@ def pull():
              envvar = 'SQL_PASSWORD',
              required = True,
              help = "Database password for SA user. Read from environment variable 'SQL_PASSWORD'")
-def run_container(password):
+@click.option('--ram',
+              type = int,
+              required = False,
+              default = 2048,
+              help = "Maximum ram used by mssql-server")
+def run_container(password, ram):
     """
     Run a new container named "anpr-mssql-server".
 
@@ -207,15 +226,11 @@ def run_container(password):
     if container:
         click.echo("Server is already running")
         return
-    # Build map of mountpoints for docker.run
-    volumes = {bakfile_path : {'bind' : bakfile_container_path,
-                               'mode' : 'ro'},
-               dbfiles_path : {'bind' : dbfiles_container_path,
-                               'mode' : 'rw'}}
     # Get the docker client
     client = docker.from_env()
     try:
-        client.containers.run(image = image_name,
+        container = client.containers.run(
+                              image = image_name,
                               detach = True,
                               environment = { "ACCEPT_EULA" : "Y",
                                               "MSSQL_PID" : "Developer",
@@ -224,14 +239,23 @@ def run_container(password):
                               cap_add = ["SYS_PTRACE"],
                               network_mode = "host",
                               volumes = volumes,
-                              restart_policy = {"Name" : "on-failure",
-                                                "MaximumRetryCount" : 3},
-                             name = container_name)
+                              name = container_name)
         click.echo("Started")
+        # Let the server start gracefully before attempting any query
+        time.sleep(10)
+        # Reconfigure max ram used by mssql server, otherwise large queries will trigger memory swaps and make the whole system slow and useless
+        response = container.exec_run(cmd = ["/opt/mssql-tools/bin/sqlcmd",
+                           "-U", "sa",
+                           "-P", password,
+                           "-S", "localhost",
+                           "-Q", query_configure_ram(ram)])
+        # click.echo(response)
+        click.echo("Reconfigured max ram = {}".format(ram))
     except docker.errors.APIError as e:
         click.echo(e)
     except docker.errors.ContainerError as e2:
         click.echo(e2)
+
 
 
 @click.option('--password', '-p',
@@ -255,13 +279,13 @@ def restore(password, dbname, name_map, verbose, bak_filename):
     else:
         name_map = ast.literal_eval(name_map)
     # Check if bak-filename exists
-    if not os.path.isfile("".join([bakfile_path, "/", bak_filename])):
-        click.echo("No such bak file: {}".format("".join([bakfile_path, "/", bak_filename])))
+    if not os.path.isfile("".join([mounts['bak']['source'], "/", bak_filename])):
+        click.echo("No such bak file: {}".format("".join([mounts['bak']['source'], "/", bak_filename])))
         sys.exit(1)
     # Check if files already exist in target dir
     for filename in name_map.values():
-        if os.path.isfile("".join([dbfiles_path, "/", filename])):
-            click.echo("Destination dbfile file already exists: {}".format("".join([dbfiles_path, "/", filename])))
+        if os.path.isfile("".join([mounts['mdf']['source'], "/", filename])):
+            click.echo("Destination dbfile file already exists: {}".format("".join([mounts['mdf']['source'], "/", filename])))
             sys.exit(1)
 
     # Run Query through sqlcmd
@@ -306,8 +330,8 @@ def attach(password, dbname, name_map, verbose):
         name_map = ast.literal_eval(name_map)
     # Check if files dont exist in target dir
     for filename in name_map.values():
-        if not os.path.isfile("".join([dbfiles_path, "/", filename])):
-            click.echo("Source dbfile does not exist: {}".format("".join([dbfiles_path, "/", filename])))
+        if not os.path.isfile("".join([mounts['mdf']['source'], "/", filename])):
+            click.echo("Source dbfile does not exist: {}".format("".join([mounts['mdf']['source'], "/", filename])))
             sys.exit(1)
 
    # Run Query through sqlcmd
