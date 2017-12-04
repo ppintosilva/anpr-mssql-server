@@ -16,7 +16,7 @@ virtualenv : /usr/bin/python2.7
 
 dependencies : ENV/bin/pip2.7 requirements.txt
 	$(info $(blue)Making subdirs and installing pip dependencies defined in requirements.txt in virtualenv$(reset))
-	@mkdir -p bakfile dbfiles
+	@mkdir -p bakfile dbfiles tempdb
 	@ENV/bin/pip2.7 install -r requirements.txt
 
 test: server.py
