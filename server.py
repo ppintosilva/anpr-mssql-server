@@ -136,9 +136,9 @@ def lsvolumes():
     call(["lsblk", "-o", "NAME,FSTYPE,SIZE,MOUNTPOINT"])
 
 @anpr.command('mount', short_help="Mount the anpr database files")
-@click.argument('bdev', required = True, type=click.Path(exists=True))
+@click.argument('blkid', required = True, type=click.STRING)
 @click.argument('content', required = True, type = click.Choice(mounts.keys()))
-def mount(bdev, content):
+def mount(blkid, content):
     """
     Mount a (openstack) volume that contains the bak or mdf files, or is used for tempdb.
 
@@ -146,10 +146,10 @@ def mount(bdev, content):
 
     Sudo permissions are required. If user does not have passwordless sudo it will prompt for a password.
     """
-    if stat.S_ISBLK(os.stat(bdev).st_mode):
-        call(["sudo", "mount", bdev, mounts[content]['source']])
+    if stat.S_ISBLK(os.stat(blkid).st_mode):
+        call(["sudo", "mount", blkid, mounts[content]['source']])
     else:
-        click.echo("Not a block device: " + bdev)
+        click.echo("Not a block device: " + blkid)
 
 @anpr.command('umount', short_help="Unmount the anpr database files")
 @click.argument('content', required = True, type = click.Choice(mounts.keys()))
