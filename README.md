@@ -125,4 +125,4 @@ The server status can be queried and stopped with the ```status``` and ```stop``
 
 ## Querying the database
 
-This script pertains to the setup of the server itself. A separate application has been built to provide a client interface for querying the database. The client side python script is available [here](https://github.com/NCL-CloudComputing/anpr-mssql-client).
+This script pertains to the setup of the server itself. A separate application has been built to provide a client interface for querying the database. The client side python script is available [here](https://github.com/PedrosWits/anpr-mssql-client).
