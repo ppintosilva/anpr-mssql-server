@@ -54,12 +54,12 @@ default_db_namemap = {'CortexDBWarehouse' : 'CortexDBWarehouse_Primary.mdf',
 #
 ###############################################
 
-def query_restoredb_builder(dbname, db_namemap, bakfile_name): 
+def query_restoredb_builder(dbname, db_namemap, bakfile_name):
     move_lines = ""
     for dbComponent, componentFilename in db_namemap.iteritems():
         move_lines += "MOVE ''{}'' TO ''{}'', ".format(
-                dbComponent, 
-                "{}/{}".format(mdf['mdf']['target'],componentFilename))
+                dbComponent,
+                "{}/{}".format(mounts['mdf']['target'],componentFilename))
     move_lines += "STATS = 10"
     sql_function = " ".join(["RESTORE DATABASE {}".format(dbname),
                             "FROM DISK = ''{}''".format("{}/{}".format(mounts['bak']['target'], bakfile_name)),
@@ -214,7 +214,7 @@ def run_container(password, ram):
     Run a new container named "anpr-mssql-server".
 
     The microsoft/mssql-server-linux docker image is an official image for Microsoft SQL Server on Linux for Docker Engine and is designed to be used in real production environments and support real workloads. Therefore, I think we can assume that the container can be run for long periods of time and won't be restarted frequently. As a result, we do not persist the master database, which records all the system-level information for a SQL Server system. Instead, the openstack volumes containing the dbfiles should be used to store the database fles.
-    
+
     The server is configured similarly to what is documented at https://hub.docker.com/r/microsoft/mssql-server-linux/.
 
     The system administrator password must be provided via the environment variable 'SQL_SERVER_PASSWORD'.
@@ -399,13 +399,15 @@ def show_db_restore_progress(password):
     if not container:
         click.echo("Server is not running")
         return
-    response =container.exec_run(
+    while(True):
+        response = container.exec_run(
                        cmd = ["/opt/mssql-tools/bin/sqlcmd",
                               "-U", "sa",
                               "-P", password,
                               "-S", "localhost",
                               "-Q", query_restore_progress_builder()])
-    click.echo(response)
+        click.echo(response)
+        time.sleep(5)
 
 @click.option('--password', '-p',
              type = str,
@@ -421,7 +423,7 @@ def connect(password):
     if not container:
         click.echo("Server is not running")
         return
-    
+
     cmd = [ "docker",
             "exec",
             "-it",
