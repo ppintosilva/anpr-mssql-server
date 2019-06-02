@@ -1,0 +1,34 @@
+[container]
+  name  = "anpr-mssql-server"
+  image = "mcr.microsoft.com/mssql/server"
+  tag   = "2017-latest"
+
+  [container.run]
+    network_mode = "bridge"
+    # When starting the container, allow for graceful_timeout seconds before
+    # returning to user
+    graceful_timeout = 10
+    mssql_pid = "Developer"
+
+  [container.dirs]
+    bak = "/mnt/anpr-bak"
+    mdf = "/mnt/anpr-mssql"
+    # YOU SHOULD NOT CHANGE THIS UNLESS THERE HAVE BEEN MAJOR CHANGES TO THE DOCKER IMAGE!
+    tempdb = "/var/opt/mssql/data"
+
+[anpr]
+  dbname = "CortexDBWarehouse"
+  # Components of the MOVE clause that make up the restore database sql query.
+  # Format should be "componentName = componentFilename"
+  # You can find out these values by running a sql query against
+  [anpr.move]
+    CortexDBWarehouse = "CortexDBWarehouse_Primary.mdf"
+    BLOB = "CortexDBWarehouse_BLOB.mdf"
+    DATA = "CortexDBWarehouse_DATA.mdf"
+    INDEX = "CortexDBWarehouse_INDEX.mdf"
+    CortexDBWarehouse_log = "CortexDBWarehouse_Log.ldf"
+
+  [anpr.dirs]
+    bak = "bakfile"
+    mdf = "dbfiles"
+    tempdb = "tempdb"
