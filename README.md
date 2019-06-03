@@ -14,7 +14,7 @@ This python script automates the configuration and deployment of a ANPR database
 ## Steps
 
 - Copy `default_config.toml` to `config.toml` and modify it according to your setup (the `[anpr.dirs]` section is a must)
-- `$ pipenv` + `$ pipenv shell` (or alternative virtualenv setup)
+- `$ pipenv install` + `$ pipenv shell` (or alternative virtualenv setup)
 - ```$ python server.py pull-image```
 - `$ export SQL_PASSWORD=YOUR_password_123` (requires use of lowercase, uppercase and punctuation/digits - minimum of 10 characters)
 - `$ python server.py start`
