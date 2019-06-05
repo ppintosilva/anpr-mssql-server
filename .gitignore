@@ -100,9 +100,6 @@ ENV/
 # mypy
 .mypy_cache/
 
-# pipfile lock
-Pipfile.lock
-
 # Subdirs bakfile and dbfiles
 bakfile/
 dbfiles/
