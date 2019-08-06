@@ -9,6 +9,7 @@ verify_ssl = true
 click = "*"
 docker = "*"
 toml = "*"
+anpr-mssql-server = {editable = true,path = "."}
 
 [requires]
 python_version = "3.7"
